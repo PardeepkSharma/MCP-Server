@@ -1,7 +1,11 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import {
+  McpServer,
+  ResourceTemplate,
+} from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import z from "zod";
 import fs from "node:fs/promises";
+
 const server = new McpServer({
   name: "my-mcp-server",
   version: "1.0.0",
@@ -11,6 +15,106 @@ const server = new McpServer({
     prompts: {},
   },
 });
+
+server.resource(
+  "all users",
+  new ResourceTemplate("users://all", {
+    list: undefined,
+  }),
+  {
+    description: "Get users data from web.",
+    title: "All Users",
+    mimeType: "application/json",
+  },
+  async (uri) => {
+    const response = await fetch("https://jsonplaceholder.typicode.com/users");
+    if (!response.ok) {
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: "application/json",
+            text: "Failed to fetch users",
+          },
+        ],
+      };
+    }
+    const users = await response.json();
+
+    return {
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: "application/json",
+          text: JSON.stringify(users),
+        },
+      ],
+    };
+  }
+);
+server.resource(
+  "user-details",
+  new ResourceTemplate("users://{user_id}/profile", {
+    list: undefined,
+  }),
+  {
+    description: "Get a user detial from the databse.",
+    title: "User Details",
+    mimeType: "application/json",
+  },
+  async (uri, { user_id }) => {
+    const users = await import("./data/users.json", {
+      with: { type: "json" },
+    }).then((m) => m.default);
+
+    const user = users.find((user) => user.id == parseInt(user_id as string));
+    if (user == null) {
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            text: JSON.stringify({ error: "User not found." }),
+            mimeType: "application/json",
+          },
+        ],
+      };
+    }
+
+    return {
+      contents: [
+        {
+          uri: uri.href,
+          text: JSON.stringify(user),
+          mimeType: "application/json",
+        },
+      ],
+    };
+  }
+),
+  server.resource(
+    "local users",
+    "users://local",
+    {
+      description: "Get users from the local JSON file",
+      title: "Local  Users",
+      mimeType: "application/json",
+    },
+    async (uri) => {
+      const users = await import("./data/users.json", {
+        with: { type: "json" },
+      }).then((m) => m.default);
+
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: "application/json",
+            text: JSON.stringify(users),
+          },
+        ],
+      };
+    }
+  );
 
 server.tool(
   "create-user",
